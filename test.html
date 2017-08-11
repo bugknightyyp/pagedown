@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title></title>
+  </head>
+  <body>
+    <script type="text/javascript">
+      function _Detab(text) {
+          if (!/\t/.test(text))
+              return text;
+
+          var spaces = ["    ", "   ", "  ", " "],
+          skew = 0,
+          v;
+
+          return text.replace(/[\n\t]/g, function (match, offset) {
+              if (match === "\n") {
+                  skew = offset + 1;
+                  return match;
+              }
+              v = (offset - skew) % 4;
+              skew = offset + 1;
+              return spaces[v];
+          });
+      }
+      let test =  _Detab("12\t1\t")
+    </script>
+  </body>
+</html>
