@@ -16,6 +16,7 @@
         <div class="wmd-panel">
             <div id="wmd-button-bar"></div>
             <textarea class="wmd-input" id="wmd-input">
+
 This is the *first* editor.
 ------------------------------
 
@@ -25,12 +26,21 @@ Just plain **Markdown**, except that the input is sanitized:
 
 and that it implements "fenced blockquotes" via a plugin:
 
+<hr/>
 """
 Do it like this:
 
-1. Have idea.
-2. ???
-3. Profit!
+- Have
+idea.
+- ???
+
+- Profit!
+- Profit!
+- Profit!
+"""
+123
+"""
+456
 """
 </textarea>
         </div>
@@ -66,7 +76,6 @@ selection), this editor creates an example text that's different from the first 
         <script type="text/javascript">
             (function () {
                 var converter1 = Markdown.getSanitizingConverter();
-
                 converter1.hooks.chain("preBlockGamut", function (text, rbg) {
                     return text.replace(/^ {0,3}""" *\n((?:.*?\n)+?) {0,3}""" *$/gm, function (whole, inner) {
                         return "<blockquote>" + rbg(inner) + "</blockquote>\n";

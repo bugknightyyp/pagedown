@@ -69,6 +69,7 @@ else
                 this[hookname] = func;
             else
                 this[hookname] = function (text) {
+                  debugger
                     var args = Array.prototype.slice.call(arguments, 0);
                     args[0] = original.apply(null, args);
                     return func.apply(null, args);
@@ -356,7 +357,7 @@ else
         }
 
         function _HashHTMLBlocks(text) {
-
+          debugger
             // Hashify HTML blocks:
             // We only want to do this for block-level HTML tags, such as headers,
             // lists, and tables. That's because we still want to wrap <p>s around
@@ -414,6 +415,9 @@ else
                 )                       // attacklab: there are sentinel newlines at end of document
             /gm,function(){...}};
             */
+            /*
+              上一个正则表达式和这个正则表达式的除了差2个标签，主要差别在 . 和 \n 的区别，而且 html block必须是独占行的
+            */
             text = text.replace(/^(<(p|div|h[1-6]|blockquote|pre|table|dl|ol|ul|script|noscript|form|fieldset|iframe|math)\b[^\r]*?.*<\/\2>[ \t]*(?=\n+)\n)/gm, hashMatch);
 
             // Special case just for <hr />. It was easier to make a special case than
@@ -433,6 +437,7 @@ else
                 )
             /g,hashMatch);
             */
+            // <hr />标签最后必须是有2个换行符才能匹配到
             text = text.replace(/\n[ ]{0,3}((<(hr)\b([^<>])*?\/?>)[ \t]*(?=\n{2,}))/g, hashMatch);
 
             // Special case for standalone HTML comments:
@@ -450,6 +455,7 @@ else
                 )
             /g,hashMatch);
             */
+            //匹配 html语法的评论，且前后的分别有至少2个 \n
             text = text.replace(/\n\n[ ]{0,3}(<!(--(?:|(?:[^>-]|-[^>])(?:[^-]|-[^-])*)--)>[ \t]*(?=\n{2,}))/g, hashMatch);
 
             // PHP and ASP-style processor instructions (<?...?> and <%...%>)
@@ -479,11 +485,10 @@ else
         function hashBlock(text) {
             text = text.replace(/(^\n+|\n+$)/g, "");
             // Replace the element text with a marker ("~KxK" where x is its key)
-            return "\n\n~K" + (g_html_blocks.push(text) - 1) + "K\n\n";
+            return "\n\n~K" + (g_html_blocks.push(text) - 1) + "K\n\n";// `\n\n~K{index}K\n\n` 代替html标签块
         }
 
         function hashMatch(wholeMatch, m1) {
-          debugger
             return hashBlock(m1);
         }
 
@@ -501,11 +506,11 @@ else
 
             // Do Horizontal Rules:
             var replacement = "<hr />\n";
-            text = text.replace(/^[ ]{0,2}( ?\*){3,}[ \t]*$/gm, replacement);
+            text = text.replace(/^[ ]{0,2}( ?\*){3,}[ \t]*$/gm, replacement);//识别h标签
             text = text.replace(/^[ ]{0,2}( ?-){3,}[ \t]*$/gm, replacement);
             text = text.replace(/^[ ]{0,2}( ?_){3,}[ \t]*$/gm, replacement);
 
-            text = _DoLists(text);
+            text = _DoLists(text);// 解析 列表
             text = _DoCodeBlocks(text);
             text = _DoBlockQuotes(text);
 
@@ -1029,16 +1034,16 @@ else
             */
 
             var marker = _listItemMarkers[list_type];
-            var re = new RegExp("(^[ \\t]*)(" + marker + ")[ \\t]+([^\\r]+?(\\n+))(?=(~0|\\1(" + marker + ")[ \\t]+))", "gm");
-            var last_item_had_a_double_newline = false;
+            var re = new RegExp("(^[ \\t]*)(" + marker + ")[ \\t]+([^\\r]+?(\\n+))(?=(~0|\\1(" + marker + ")[ \\t]+))", "gm"); // 列表项内容不能有换行符
+            var last_item_had_a_double_newline = false; //上一项有2个连着的空行，也就是有2个换行符
             list_str = list_str.replace(re,
                 function (wholeMatch, m1, m2, m3) {
-                    var item = m3;
-                    var leading_space = m1;
-                    var ends_with_double_newline = /\n\n$/.test(item);
+                    var item = m3;// 列表项内容
+                    var leading_space = m1; //前置格式空格
+                    var ends_with_double_newline = /\n\n$/.test(item);//列表项内容结尾至少有2个换行符，那么列表项内容会用p标签包起来。
                     var contains_double_newline = ends_with_double_newline || item.search(/\n{2,}/) > -1;
 
-                    var loose = contains_double_newline || last_item_had_a_double_newline;
+                    var loose = contains_double_newline || last_item_had_a_double_newline; //当前项目除了看自身结尾有没有至少2个换行符以外，还要看上一项是不是结尾有至少2个换行符
                     item = _RunBlockGamut(_Outdent(item), /* doNotUnhash = */true, /* doNotCreateParagraphs = */ !loose);
 
                     last_item_had_a_double_newline = ends_with_double_newline;
@@ -1552,7 +1557,7 @@ else
             return text;
         }
 
-        function _Outdent(text) {
+        function _Outdent(text) {//缩进和空格替换掉
             //
             // Remove one level of line-leading tabs or spaces
             //
