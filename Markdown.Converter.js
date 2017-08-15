@@ -305,7 +305,7 @@ else
             return text;
         };
 
-        function _StripLinkDefinitions(text) {
+        function _StripLinkDefinitions(text) {// 抽取引用
             //
             // Strips link definitions from text, stores the URLs and titles in
             // hash references.
@@ -335,7 +335,13 @@ else
                 (\n+)             // subsequent newlines = $6, capturing because they must be put back if the potential title isn't an actual title
             /gm, function(){...});
             */
-
+            /*
+              三种引用标准定义是：
+              [foo]: http://example.com/  "Optional Title Here"
+              [foo]: http://example.com/  'Optional Title Here'
+              [foo]: http://example.com/  (Optional Title Here)
+              从正则表达式实现上看，尖括号扩住 url 也是可以的。eg: [foo]: <http://example.com/>  "Optional Title Here"
+            */
             text = text.replace(/^[ ]{0,3}\[([^\[\]]+)\]:[ \t]*\n?[ \t]*<?(\S+?)>?(?=\s|$)[ \t]*\n?[ \t]*((\n*)["(](.+?)[")][ \t]*)?(\n+)/gm,
                 function (wholeMatch, m1, m2, m3, m4, m5, m6) {
                     m1 = m1.toLowerCase();
@@ -356,8 +362,7 @@ else
             return text;
         }
 
-        function _HashHTMLBlocks(text) {
-          debugger
+        function _HashHTMLBlocks(text) {// 处理html代码块。`\n\n~K{index}K\n\n` 代替html标签块，并保存 html block code
             // Hashify HTML blocks:
             // We only want to do this for block-level HTML tags, such as headers,
             // lists, and tables. That's because we still want to wrap <p>s around
@@ -477,24 +482,25 @@ else
                 )
             /g,hashMatch);
             */
+            // 匹配php 或者 ASP 风格的处理命令
             text = text.replace(/(?:\n\n)([ ]{0,3}(?:<([?%])[^\r]*?\2>)[ \t]*(?=\n{2,}))/g, hashMatch);
 
             return text;
         }
 
-        function hashBlock(text) {
+        function hashBlock(text) {// `\n\n~K{index}K\n\n` 代替html标签块，并保存 html block code
             text = text.replace(/(^\n+|\n+$)/g, "");
             // Replace the element text with a marker ("~KxK" where x is its key)
-            return "\n\n~K" + (g_html_blocks.push(text) - 1) + "K\n\n";// `\n\n~K{index}K\n\n` 代替html标签块
+            return "\n\n~K" + (g_html_blocks.push(text) - 1) + "K\n\n";
         }
 
         function hashMatch(wholeMatch, m1) {
             return hashBlock(m1);
         }
-
+        //blockGamutHookCallback 和 _RunBlockGamut 互相调用，递归执行，主要是用来处理诸如 解释标签嵌套的情况
         var blockGamutHookCallback = function (t) { return _RunBlockGamut(t); }
 
-        function _RunBlockGamut(text, doNotUnhash, doNotCreateParagraphs) {
+        function _RunBlockGamut(text, doNotUnhash, doNotCreateParagraphs) {// 这是解析markdown语法的核心方法
             //
             // These are all the transformations that form block-level
             // tags like paragraphs, headers, and list items.
@@ -527,7 +533,7 @@ else
             return text;
         }
 
-        function _RunSpanGamut(text) {
+        function _RunSpanGamut(text) {// 解释 块级别标签内部的内容，比如 p, header, list-item
             //
             // These are all the transformations that occur *within* block-level
             // tags like paragraphs, headers, and list items.
@@ -562,7 +568,7 @@ else
             return text;
         }
 
-        function _EscapeSpecialCharsWithinTagAttributes(text) {
+        function _EscapeSpecialCharsWithinTagAttributes(text) {// 处理
             //
             // Within tags -- meaning between < and > -- encode [\ ` * _] so they
             // don't conflict with their use in Markdown for code, italics and strong.
@@ -572,11 +578,13 @@ else
             // "Mastering Regular Expressions", 2nd Ed., pp. 200-201.
 
             // SE: changed the comment part of the regex
-
+            /*
+            匹配标签和html注释，eg: <a href="dd.com"> 或 </a> 或者 <!-- anything comment -->
+            */
             var regex = /(<[a-z\/!$]("[^"]*"|'[^']*'|[^'">])*>|<!(--(?:|(?:[^>-]|-[^>])(?:[^-]|-[^-])*)--)>)/gi;
 
             text = text.replace(regex, function (wholeMatch) {
-                var tag = wholeMatch.replace(/(.)<\/?code>(?=.)/g, "$1`");
+                var tag = wholeMatch.replace(/(.)<\/?code>(?=.)/g, "$1`"); //123<code>456</code>789 处理成 123`456`789 
                 tag = escapeCharacters(tag, wholeMatch.charAt(1) == "!" ? "\\`*_/" : "\\`*_"); // also escape slashes in comments to prevent autolinking there -- http://meta.stackexchange.com/questions/95987
                 return tag;
             });
@@ -1140,12 +1148,15 @@ else
                 (?!`)
             /gm, function(){...});
             */
-
+            /*
+              不限制 反引号(标识符)界定时的数量，但是开始和结尾的数量要一样
+            */
             text = text.replace(/(^|[^\\`])(`+)(?!`)([^\r]*?[^`])\2(?!`)/gm,
                 function (wholeMatch, m1, m2, m3, m4) {
                     var c = m3;
                     c = c.replace(/^([ \t]*)/g, ""); // leading whitespace
                     c = c.replace(/[ \t]*$/g, ""); // trailing whitespace
+                    //上边两句可以使用 trim()代替
                     c = _EncodeCode(c);
                     c = c.replace(/:\/\//g, "~P"); // to prevent auto-linking. Not necessary in code *blocks*, but in code spans. Will be converted back after the auto-linker runs.
                     return m1 + "<code>" + c + "</code>";
@@ -1603,9 +1614,9 @@ else
         }
 
         function escapeCharacters(text, charsToEscape, afterBackslash) {
-            // First we have to escape the escape characters so that
-            // we can build a character class out of them
-            var regexString = "([" + charsToEscape.replace(/([\[\]\\])/g, "\\$1") + "])";
+            // First we have to escape the escape characters so that // 首先转义需要转义的字符
+            // we can build a character class out of them 使用他们创建一个字符类
+            var regexString = "([" + charsToEscape.replace(/([\[\]\\])/g, "\\$1") + "])";//转义字符是使用一次少一层
 
             if (afterBackslash) {
                 regexString = "\\\\" + regexString;
@@ -1618,7 +1629,7 @@ else
         }
 
 
-        function escapeCharacters_callback(wholeMatch, m1) {
+        function escapeCharacters_callback(wholeMatch, m1) {// 转义后的字符使用 `~E${c.charCodeAt(0)E}`
             var charCodeToEscape = m1.charCodeAt(0);
             return "~E" + charCodeToEscape + "E";
         }
