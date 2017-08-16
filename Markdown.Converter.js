@@ -69,7 +69,6 @@ else
                 this[hookname] = func;
             else
                 this[hookname] = function (text) {
-                  debugger
                     var args = Array.prototype.slice.call(arguments, 0);
                     args[0] = original.apply(null, args);
                     return func.apply(null, args);
@@ -269,7 +268,7 @@ else
             text = text.replace(/\r/g, "\n"); // Mac to Unix
 
             // Make sure text begins and ends with a couple of newlines:
-            text = "\n\n" + text + "\n\n";
+            text = "\n\n" + text + "\n\n"; //现在整个字符串前后各加2个换行符
 
             // Convert all tabs to spaces.
             text = _Detab(text);
@@ -338,17 +337,33 @@ else
             /*
               三种引用标准定义是：
               [foo]: http://example.com/  "Optional Title Here"
-              [foo]: http://example.com/  'Optional Title Here'
+              [foo]: http://example.com/  'Optional Title Here' // 从下面的正则表达式看出 并不匹配这种情况
               [foo]: http://example.com/  (Optional Title Here)
               从正则表达式实现上看，尖括号扩住 url 也是可以的。eg: [foo]: <http://example.com/>  "Optional Title Here"
             */
             text = text.replace(/^[ ]{0,3}\[([^\[\]]+)\]:[ \t]*\n?[ \t]*<?(\S+?)>?(?=\s|$)[ \t]*\n?[ \t]*((\n*)["(](.+?)[")][ \t]*)?(\n+)/gm,
                 function (wholeMatch, m1, m2, m3, m4, m5, m6) {
+                  /*
+                    m1-link id
+                    m2-link text
+                    m3-link title 片段
+                    m4-匹配 url 与 title 之间是不是有2个以上的换行符
+                    m5-不带引号或者括号的title
+                    m6-结尾的换行符
+                  */
                     m1 = m1.toLowerCase();
                     g_urls.set(m1, _EncodeAmpsAndAngles(m2));  // Link IDs are case-insensitive
                     if (m4) {
                         // Oops, found blank lines, so it's not a title.
                         // Put back the parenthetical statement we stole.
+                        /*
+                          这个判断主要是处理这种情况:
+                          eg:
+                              [foo]: http://example.com/
+
+                              "Optional Title Here"
+                          url 与 title 之间有超过2个换行符，那么 这时的title就不是 与url 匹配的 title,而是作为文件内容的一部分。
+                        */
                         return m3 + m6;
                     } else if (m5) {
                         g_titles.set(m1, m5.replace(/"/g, "&quot;"));
@@ -500,7 +515,7 @@ else
         //blockGamutHookCallback 和 _RunBlockGamut 互相调用，递归执行，主要是用来处理诸如 解释标签嵌套的情况
         var blockGamutHookCallback = function (t) { return _RunBlockGamut(t); }
 
-        function _RunBlockGamut(text, doNotUnhash, doNotCreateParagraphs) {// 这是解析markdown语法的核心方法
+        function _RunBlockGamut(text, doNotUnhash, doNotCreateParagraphs) {// 这是解析块级标签
             //
             // These are all the transformations that form block-level
             // tags like paragraphs, headers, and list items.
@@ -511,8 +526,8 @@ else
             text = _DoHeaders(text);
 
             // Do Horizontal Rules:
-            var replacement = "<hr />\n";
-            text = text.replace(/^[ ]{0,2}( ?\*){3,}[ \t]*$/gm, replacement);//识别h标签
+            var replacement = "<hr />\n";//解释横线
+            text = text.replace(/^[ ]{0,2}( ?\*){3,}[ \t]*$/gm, replacement);
             text = text.replace(/^[ ]{0,2}( ?-){3,}[ \t]*$/gm, replacement);
             text = text.replace(/^[ ]{0,2}( ?_){3,}[ \t]*$/gm, replacement);
 
@@ -584,7 +599,7 @@ else
             var regex = /(<[a-z\/!$]("[^"]*"|'[^']*'|[^'">])*>|<!(--(?:|(?:[^>-]|-[^>])(?:[^-]|-[^-])*)--)>)/gi;
 
             text = text.replace(regex, function (wholeMatch) {
-                var tag = wholeMatch.replace(/(.)<\/?code>(?=.)/g, "$1`"); //123<code>456</code>789 处理成 123`456`789 
+                var tag = wholeMatch.replace(/(.)<\/?code>(?=.)/g, "$1`"); //123<code>456</code>789 处理成 123`456`789
                 tag = escapeCharacters(tag, wholeMatch.charAt(1) == "!" ? "\\`*_/" : "\\`*_"); // also escape slashes in comments to prevent autolinking there -- http://meta.stackexchange.com/questions/95987
                 return tag;
             });
@@ -627,6 +642,7 @@ else
                 ()()()()                    // pad remaining backreferences
             /g, writeAnchorTag);
             */
+            // 匹配 引用形式的链接: [link text] [id]
             text = text.replace(/(\[((?:\[[^\]]*\]|[^\[\]])*)\][ ]?(?:\n[ ]*)?\[(.*?)\])()()()()/g, writeAnchorTag);
 
             //
@@ -666,7 +682,8 @@ else
                 )
             /g, writeAnchorTag);
             */
-
+            // 匹配 行内的链接: [link text](url "optional title") url可以不写
+            //使用 ()来作为 $3(link id)占位符
             text = text.replace(/(\[((?:\[[^\]]*\]|[^\[\]])*)\]\([ \t]*()<?((?:\([^)]*\)|[^()\s])*?)>?[ \t]*((['"])(.*?)\6[ \t]*)?\))/g, writeAnchorTag);
 
             //
@@ -676,6 +693,8 @@ else
             //
 
             /*
+
+            //隐式链接标记功能让你可以省略指定链接标记
             text = text.replace(/
                 (                   // wrap whole match in $1
                     \[
@@ -691,6 +710,16 @@ else
         }
 
         function writeAnchorTag(wholeMatch, m1, m2, m3, m4, m5, m6, m7) {
+          /* 把链接的3种形式，综合一个函数处理,
+            m1-匹配的一个完整链接;
+            m2-链接字符;
+            m3-引用链接的ID
+            m4-内联的url
+            m5-内联的title, 完整的title 包括引号以及title
+            m6-内联的title的引号，单引号或者双引号
+            m7-内联的title, 不包括引号的title
+            (看出: m5是有m6 + m7 组成的)
+          */
             if (m7 == undefined) m7 = "";
             var whole_match = m1;
             var link_text = m2.replace(/:\/\//g, "~P"); // to prevent auto-linking withing the link. will be converted back after the auto-linker runs
@@ -701,9 +730,10 @@ else
             if (url == "") {
                 if (link_id == "") {
                     // lower-case and turn embedded newlines into spaces
+                    //很显然
                     link_id = link_text.toLowerCase().replace(/ ?\n/g, " ");
                 }
-                url = "#" + link_id;
+                url = "#" + link_id;//以内联的link text生成锚点连接
 
                 if (g_urls.get(link_id) != undefined) {
                     url = g_urls.get(link_id);
@@ -711,11 +741,11 @@ else
                         title = g_titles.get(link_id);
                     }
                 }
-                else {
-                    if (whole_match.search(/\(\s*\)$/m) > -1) {
+                else {// 没有 url 且不是引用链接
+                    if (whole_match.search(/\(\s*\)$/m) > -1) {//eg: [link text]("    ")
                         // Special case for explicit empty url
                         url = "";
-                    } else {
+                    } else {//eg: [link text]("link title")
                         return whole_match;
                     }
                 }
@@ -735,7 +765,7 @@ else
             return result;
         }
 
-        function _DoImages(text) {
+        function _DoImages(text) {//解析图片和解析链接代码几乎一样
 
             if (text.indexOf("![") === -1)
                 return text;
@@ -798,7 +828,7 @@ else
             return text;
         }
 
-        function attributeEncode(text) {
+        function attributeEncode(text) {//将属性值里含有 > < " ' 转成实体字符
             // unconditionally replace angle brackets here -- what ends up in an attribute (e.g. alt or title)
             // never makes sense to have verbatim HTML in it (and the sanitizer would totally break it)
             return text.replace(/>/g, "&gt;").replace(/</g, "&lt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -849,7 +879,7 @@ else
             return result;
         }
 
-        function _DoHeaders(text) {
+        function _DoHeaders(text) {//解释 header1-6标签
 
             // Setext-style headers:
             //  Header 1
@@ -928,6 +958,7 @@ else
                 )
             /g
             */
+            //很显然 如果 text 结尾的list片段，whole_list是不能匹配的，但是在方法开始 加了 text += "~0";所以保证了list片段不会出现在text末尾
             var whole_list = /^(([ ]{0,3}([*+-]|\d+[.])[ \t]+)[^\r]+?(~0|\n{2,}(?=\S)(?![ \t]*(?:[*+-]|\d+[.])[ \t]+)))/gm;
             if (g_list_level) {
                 text = text.replace(whole_list, function (wholeMatch, m1, m2) {
@@ -953,6 +984,7 @@ else
             } else {
                 whole_list = /(\n\n|^\n?)(([ ]{0,3}([*+-]|\d+[.])[ \t]+)[^\r]+?(~0|\n{2,}(?=\S)(?![ \t]*(?:[*+-]|\d+[.])[ \t]+)))/g;
                 text = text.replace(whole_list, function (wholeMatch, m1, m2, m3) {
+                  debugger
                     var runup = m1;
                     var list = m2;
 
@@ -1041,7 +1073,8 @@ else
             /gm, function(){...});
             */
 
-            var marker = _listItemMarkers[list_type];
+            var marker = _listItemMarkers[list_type];//var _listItemMarkers = { ol: "\\d+[.]", ul: "[*+-]" };
+            // re里有个反向引用 list item的缩进，这使得 list的嵌套成为可能
             var re = new RegExp("(^[ \\t]*)(" + marker + ")[ \\t]+([^\\r]+?(\\n+))(?=(~0|\\1(" + marker + ")[ \\t]+))", "gm"); // 列表项内容不能有换行符
             var last_item_had_a_double_newline = false; //上一项有2个连着的空行，也就是有2个换行符
             list_str = list_str.replace(re,
@@ -1053,7 +1086,7 @@ else
 
                     var loose = contains_double_newline || last_item_had_a_double_newline; //当前项目除了看自身结尾有没有至少2个换行符以外，还要看上一项是不是结尾有至少2个换行符
                     item = _RunBlockGamut(_Outdent(item), /* doNotUnhash = */true, /* doNotCreateParagraphs = */ !loose);
-
+                    //_Outdent 里有把每一行开头的 的一个 tab 或 {1,4}个空格删掉，所以如果要想正确实现list 嵌套，如果是使用空格来缩进，请用4个空格为单位来控制缩进
                     last_item_had_a_double_newline = ends_with_double_newline;
                     return "<li>" + item + "</li>\n";
                 }
@@ -1089,6 +1122,10 @@ else
 
             text = text.replace(/(?:\n\n|^\n?)((?:(?:[ ]{4}|\t).*\n+)+)(\n*[ ]{0,3}[^ \t\n]|(?=~0))/g,
                 function (wholeMatch, m1, m2) {
+                  /*
+                   m1: code block
+                   m2: code block 后面的格式化字符 + 一个非空字符串
+                  */
                     var codeblock = m1;
                     var nextChar = m2;
 
@@ -1390,7 +1427,7 @@ else
             text = text.replace(/^\n+/g, "");
             text = text.replace(/\n+$/g, "");
 
-            var grafs = text.split(/\n{2,}/g);
+            var grafs = text.split(/\n{2,}/g); // 2个以上的换行符为分割分段
             var grafsOut = [];
 
             var markerRe = /~K(\d+)K/;
@@ -1418,7 +1455,7 @@ else
             //
             // Unhashify HTML blocks
             //
-            if (!doNotUnhash) {
+            if (!doNotUnhash) {// 将替换了的 html标签的字符串再替换回来
                 end = grafsOut.length;
                 for (var i = 0; i < end; i++) {
                     var foundAny = true;
@@ -1434,15 +1471,15 @@ else
             return grafsOut.join("\n\n");
         }
 
-        function _EncodeAmpsAndAngles(text) {
+        function _EncodeAmpsAndAngles(text) {//将 & < 符号转成其实体字符
             // Smart processing for ampersands and angle brackets that need to be encoded.
 
             // Ampersand-encoding based entirely on Nat Irons's Amputator MT plugin:
             //   http://bumppo.net/projects/amputator/
-            text = text.replace(/&(?!#?[xX]?(?:[0-9a-fA-F]+|\w+);)/g, "&amp;");
+            text = text.replace(/&(?!#?[xX]?(?:[0-9a-fA-F]+|\w+);)/g, "&amp;");// 如果ampersands，不是作为实体字符使用，则全部替换成其实体字符形式
 
             // Encode naked <'s
-            text = text.replace(/<(?![a-z\/?!]|~D)/gi, "&lt;");
+            text = text.replace(/<(?![a-z\/?!]|~D)/gi, "&lt;");// 如果 angle brackets,不是作为html tag使用，则全部替换成其实体字符形式
 
             return text;
         }
@@ -1568,7 +1605,7 @@ else
             return text;
         }
 
-        function _Outdent(text) {//缩进和空格替换掉
+        function _Outdent(text) {// 移除行首的一个tab 或者1-4个空格
             //
             // Remove one level of line-leading tabs or spaces
             //
