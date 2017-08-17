@@ -984,7 +984,6 @@ else
             } else {
                 whole_list = /(\n\n|^\n?)(([ ]{0,3}([*+-]|\d+[.])[ \t]+)[^\r]+?(~0|\n{2,}(?=\S)(?![ \t]*(?:[*+-]|\d+[.])[ \t]+)))/g;
                 text = text.replace(whole_list, function (wholeMatch, m1, m2, m3) {
-                  debugger
                     var runup = m1;
                     var list = m2;
 
@@ -1261,6 +1260,12 @@ else
             // (?!\2)              Not followed by another marker character (ensuring that we match the
             //                     rightmost two in a longer row)...
             // (?=[\W_]|$)         ...but by any other non-word character or the end of string.
+
+            /*
+              从正则上看，强调符的外侧必须是非单词字符，一般是空格，而内侧必须是 \S 非空字符
+              (^|[\W_]) 字符串的开始 或者 非单词字符开始及_
+              (?:(?!\1)|(?=^)) 保证能匹配左边的_, eg: ___foo__ 匹配的是出来的内容是 _foo
+            */
             text = text.replace(/(^|[\W_])(?:(?!\1)|(?=^))(\*|_)\2(?=\S)([^\r]*?\S)\2\2(?!\2)(?=[\W_]|$)/g,
             "$1<strong>$3</strong>");
 
@@ -1272,6 +1277,13 @@ else
             return deasciify(text);
         }
 
+
+        /*
+          这个方法与上一个方法的关键区别在于：_DoItalicsAndBoldStrict中间可以出现和界定符一样的连着的字符（包括数量）
+            _DoItalicsAndBold_AllowIntrawordWithAsterisk不行，但是（少于或多于界定符的数量是可以的）
+          对于这个字符串： **fsfsfs**dd**dd**,  _DoItalicsAndBoldStrict会匹配一次，匹配整个字符串
+          _DoItalicsAndBold_AllowIntrawordWithAsterisk会匹配两次 **fsfsfs**(第一次)d(第2次)d**dd**
+        */
         function _DoItalicsAndBold_AllowIntrawordWithAsterisk(text) {
 
             if (text.indexOf("*") === -1 && text.indexOf("_") === - 1)
@@ -1369,7 +1381,7 @@ else
         }
 
 
-        function _DoBlockQuotes(text) {
+        function _DoBlockQuotes(text) {//区块引用
 
             /*
             text = text.replace(/
@@ -1386,6 +1398,7 @@ else
 
             text = text.replace(/((^[ \t]*>[ \t]?.+\n(.+\n)*\n*)+)/gm,
                 function (wholeMatch, m1) {
+                    // m1: 整个 blockquote片段
                     var bq = m1;
 
                     // attacklab: hack around Konqueror 3.5.4 bug:
@@ -1484,7 +1497,7 @@ else
             return text;
         }
 
-        function _EncodeBackslashEscapes(text) {
+        function _EncodeBackslashEscapes(text) {//反斜杠转义
             //
             //   Parameter:  String.
             //   Returns:    The string, with after processing the following backslash
@@ -1510,7 +1523,7 @@ else
             autoLinkRegex = new RegExp("(=\"|<)?\\b(https?|ftp)(://" + charInsideUrl + "*" + charEndingUrl + ")(?=$|\\W)", "gi"),
             endCharRegex = new RegExp(charEndingUrl, "i");
 
-        function handleTrailingParens(wholeMatch, lookbehind, protocol, link) {
+        function handleTrailingParens(wholeMatch, lookbehind, protocol, link) {//自动链接 处理方法
             if (lookbehind)
                 return wholeMatch;
             if (link.charAt(link.length - 1) !== ")")
@@ -1546,7 +1559,7 @@ else
             return "<" + protocol + link + ">" + tail;
         }
 
-        function _DoAutoLinks(text) {
+        function _DoAutoLinks(text) {//自动链接处理
 
             // note that at this point, all other URL in the text are already hyperlinked as <a href=""></a>
             // *except* for the <http://www.foo.com> case
